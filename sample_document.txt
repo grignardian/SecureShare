@@ -1,0 +1,4 @@
+CONFIDENTIAL TRANSMISSION
+System: SecureShare End-to-End Cryptographic Vault
+Payload: AES-256-CBC with PKCS7 Padding & SHA-256 Checksum.
+This document is encrypted locally before sending over the network.
