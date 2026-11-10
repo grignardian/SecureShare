@@ -1,11 +1,12 @@
 """
-keystore.py - Key Management for SecureShare
---------------------------------------------
-This module handles:
-1. Generating RSA-2048 key pairs (public and private keys).
-2. Saving keys as standard PEM files in the 'keys/' directory.
-3. Loading public and private keys from disk.
-4. Listing existing keys for the user interface.
+keystore.py - Local Key Management for SecureShare
+--------------------------------------------------
+Handles RSA-2048 key pair generation, saving, and loading on the client machine.
+Security rules:
+- Private keys are stored ONLY on the user's local machine inside the keys/ folder.
+- Private keys are encrypted on disk using password-based encryption (PKCS#8).
+- Private key files use owner-only permissions (0600) where supported by the OS.
+- Private keys must NEVER be sent to the server or committed to Git.
 """
 
 import os
@@ -13,122 +14,176 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives import serialization
 
 
-# Root directory of the project and the keys directory
-SRC_DIR = os.path.dirname(os.path.abspath(__file__))
-PROJECT_ROOT = os.path.dirname(SRC_DIR)
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.dirname(CURRENT_DIR)
 KEYS_DIR = os.path.join(PROJECT_ROOT, "keys")
 
 
-def ensure_keys_directory():
-    """Make sure the keys folder exists."""
-    if not os.path.exists(KEYS_DIR):
-        os.makedirs(KEYS_DIR, exist_ok=True)
+def ensure_keys_dir(keys_dir=KEYS_DIR):
+    """Create the local keys directory if it does not exist."""
+    if not os.path.exists(keys_dir):
+        os.makedirs(keys_dir, exist_ok=True)
 
 
-def generate_keypair(key_name: str) -> tuple[str, str]:
+def get_private_key_path(username, keys_dir=KEYS_DIR):
+    """Return the path where a user's encrypted private key is stored."""
+    clean_name = os.path.basename(username)
+    return os.path.join(keys_dir, clean_name + "_private.pem")
+
+
+def get_public_key_path(username, keys_dir=KEYS_DIR):
+    """Return the path where a user's public key is stored."""
+    clean_name = os.path.basename(username)
+    return os.path.join(keys_dir, clean_name + "_public.pem")
+
+
+def has_private_key(username, keys_dir=KEYS_DIR):
+    """Check if the encrypted private key file exists locally for this user."""
+    path = get_private_key_path(username, keys_dir)
+    return os.path.isfile(path)
+
+
+def generate_rsa_keypair():
     """
-    Generate a 2048-bit RSA key pair and save them to keys/:
-      - keys/{key_name}_private.pem
-      - keys/{key_name}_public.pem
-    Returns: (private_pem_str, public_pem_str)
+    Generate a fresh 2048-bit RSA key pair.
+    Returns: (private_key_object, public_key_pem_string)
     """
-    ensure_keys_directory()
-
-    # Generate RSA private key (2048-bit, exponent 65537)
     private_key = rsa.generate_private_key(
         public_exponent=65537,
         key_size=2048
     )
 
-    # Convert private key to PEM format
-    private_pem = private_key.private_bytes(
-        encoding=serialization.Encoding.PEM,
-        format=serialization.PrivateFormat.PKCS8,
-        encryption_algorithm=serialization.NoEncryption()
-    ).decode("utf-8")
-
-    # Convert public key to PEM format
     public_pem = private_key.public_key().public_bytes(
         encoding=serialization.Encoding.PEM,
         format=serialization.PublicFormat.SubjectPublicKeyInfo
     ).decode("utf-8")
 
-    # Save to disk
-    priv_file = os.path.join(KEYS_DIR, f"{key_name}_private.pem")
-    pub_file = os.path.join(KEYS_DIR, f"{key_name}_public.pem")
-
-    with open(priv_file, "w", encoding="utf-8") as f:
-        f.write(private_pem)
-
-    with open(pub_file, "w", encoding="utf-8") as f:
-        f.write(public_pem)
-
-    return private_pem, public_pem
+    return private_key, public_pem
 
 
-def load_public_key(name_or_path: str) -> str:
+def save_private_key(username, private_key, password, keys_dir=KEYS_DIR, overwrite=False):
     """
-    Load a public key PEM string by user name or by file path.
-    Example: load_public_key("bob") or load_public_key("/path/to/bob_public.pem")
+    Encrypt the private key using the user's password and save it to disk.
+    Applies owner-only file permissions (chmod 600) where supported.
     """
-    # Check if a direct file path was provided
-    if os.path.isfile(name_or_path):
-        with open(name_or_path, "r", encoding="utf-8") as f:
-            return f.read()
+    if not password:
+        raise ValueError("Password is required to protect the private key.")
 
-    # Otherwise look up keys/{name_or_path}_public.pem
-    key_file = os.path.join(KEYS_DIR, f"{name_or_path}_public.pem")
-    if not os.path.exists(key_file):
-        raise FileNotFoundError(f"Public key file not found: {key_file}")
+    ensure_keys_dir(keys_dir)
+    priv_path = get_private_key_path(username, keys_dir)
 
-    with open(key_file, "r", encoding="utf-8") as f:
-        return f.read()
+    if os.path.exists(priv_path) and not overwrite:
+        raise FileExistsError("Private key already exists for user: " + username)
+
+    # Encrypt private key PEM using password-based PKCS#8 encryption
+    encrypted_pem_bytes = private_key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.PKCS8,
+        encryption_algorithm=serialization.BestAvailableEncryption(password.encode("utf-8"))
+    )
+
+    with open(priv_path, "wb") as file_obj:
+        file_obj.write(encrypted_pem_bytes)
+
+    # Restrict file access to owner read/write only on POSIX systems
+    try:
+        os.chmod(priv_path, 0o600)
+    except OSError:
+        pass
+
+    return priv_path
 
 
-def load_private_key(name_or_path: str) -> str:
+def save_public_key(username, public_pem, keys_dir=KEYS_DIR, overwrite=False):
+    """Save a user's RSA public key PEM string to disk."""
+    ensure_keys_dir(keys_dir)
+    pub_path = get_public_key_path(username, keys_dir)
+
+    if os.path.exists(pub_path) and not overwrite:
+        raise FileExistsError("Public key already exists for user: " + username)
+
+    with open(pub_path, "w", encoding="utf-8") as file_obj:
+        file_obj.write(public_pem)
+
+    return pub_path
+
+
+def load_public_key(username, keys_dir=KEYS_DIR):
+    """Read and return a user's public key PEM string from disk."""
+    pub_path = get_public_key_path(username, keys_dir)
+    if not os.path.exists(pub_path):
+        raise FileNotFoundError("Public key file not found: " + pub_path)
+
+    with open(pub_path, "r", encoding="utf-8") as file_obj:
+        return file_obj.read()
+
+
+def load_private_key(username, password, keys_dir=KEYS_DIR):
     """
-    Load a private key PEM string by user name or by file path.
-    Example: load_private_key("bob") or load_private_key("/path/to/bob_private.pem")
+    Load the password-protected private key from disk and unlock it in memory.
+    Returns: unencrypted private key PEM string (kept strictly in memory).
     """
-    # Check if a direct file path was provided
-    if os.path.isfile(name_or_path):
-        with open(name_or_path, "r", encoding="utf-8") as f:
-            return f.read()
+    if not password:
+        raise ValueError("Password is required to unlock your private key.")
 
-    # Otherwise look up keys/{name_or_path}_private.pem
-    key_file = os.path.join(KEYS_DIR, f"{name_or_path}_private.pem")
-    if not os.path.exists(key_file):
-        raise FileNotFoundError(f"Private key file not found: {key_file}")
+    priv_path = get_private_key_path(username, keys_dir)
+    if not os.path.exists(priv_path):
+        raise FileNotFoundError(
+            "Local private key not found for '" + username + "'. "
+            "If you registered on another computer, please import your encrypted private key."
+        )
 
-    with open(key_file, "r", encoding="utf-8") as f:
-        return f.read()
+    with open(priv_path, "rb") as file_obj:
+        encrypted_pem_bytes = file_obj.read()
+
+    try:
+        private_key = serialization.load_pem_private_key(
+            encrypted_pem_bytes,
+            password=password.encode("utf-8")
+        )
+    except Exception:
+        raise ValueError("Incorrect password: could not unlock your private key.")
+
+    # Return unlocked PEM in memory so crypto functions can unwrap session keys
+    unlocked_pem = private_key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.PKCS8,
+        encryption_algorithm=serialization.NoEncryption()
+    ).decode("utf-8")
+
+    return unlocked_pem
 
 
-def list_available_keys() -> list[str]:
+def create_and_save_user_keys(username, password, keys_dir=KEYS_DIR, overwrite=False):
     """
-    Return a list of available key names found in the keys/ directory.
-    For example: ['alice', 'bob']
+    Convenience function for registration:
+    Generates an RSA-2048 key pair, saves encrypted private key and public key locally,
+    and returns the public key PEM string to be uploaded to the server.
     """
-    ensure_keys_directory()
-    names = set()
-    for fname in os.listdir(KEYS_DIR):
-        if fname.endswith("_public.pem"):
-            name = fname[:-11]  # Remove '_public.pem'
-            names.add(name)
-        elif fname.endswith("_private.pem"):
-            name = fname[:-12]  # Remove '_private.pem'
-            names.add(name)
-    return sorted(list(names))
+    private_key, public_pem = generate_rsa_keypair()
+    save_private_key(username, private_key, password, keys_dir=keys_dir, overwrite=overwrite)
+    save_public_key(username, public_pem, keys_dir=keys_dir, overwrite=overwrite)
+    return public_pem
 
 
-def ensure_default_keys():
+def import_private_key(username, source_path, password, keys_dir=KEYS_DIR, overwrite=False):
     """
-    Make sure default demo keys ('alice' and 'bob') exist.
-    If not present, generates them automatically.
+    Import an existing encrypted private key file (for logging in on a new computer).
+    Verifies the password can unlock the key before saving it locally.
     """
-    ensure_keys_directory()
-    for name in ["alice", "bob"]:
-        priv = os.path.join(KEYS_DIR, f"{name}_private.pem")
-        pub = os.path.join(KEYS_DIR, f"{name}_public.pem")
-        if not (os.path.exists(priv) and os.path.exists(pub)):
-            generate_keypair(name)
+    if not os.path.isfile(source_path):
+        raise FileNotFoundError("Selected key file not found: " + source_path)
+
+    with open(source_path, "rb") as file_obj:
+        key_bytes = file_obj.read()
+
+    try:
+        private_key = serialization.load_pem_private_key(
+            key_bytes,
+            password=password.encode("utf-8")
+        )
+    except Exception:
+        raise ValueError("Could not unlock imported key with the provided password.")
+
+    priv_path = save_private_key(username, private_key, password, keys_dir=keys_dir, overwrite=overwrite)
+    return priv_path

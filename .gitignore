@@ -1,4 +1,4 @@
-# Python bytecode
+# Python bytecode and cache
 __pycache__/
 *.py[cod]
 *$py.class
@@ -6,20 +6,32 @@ __pycache__/
 build/
 dist/
 
-# Virtual environment
+# Virtual environments
 .venv/
 venv/
 ENV/
 
-# Cryptographic Keys (do not commit secret keys)
+# Local private/public user keys (never commit to Git)
 keys/
 local_keys/
 
-# Encrypted temporary/output bundles
+# Server storage and SQLite databases (never commit user data)
+server_data/
+*.db
+*.sqlite
+*.sqlite3
+
+# TLS private keys and local server certificates
+certs/*.key
+certs/*.crt
+certs/*.pem
+
+# Encrypted files and downloaded transfers
+*.enc
 *.secureshare
 downloads/
 
-# IDE and OS
+# IDE and OS temporary files
 .DS_Store
 .idea/
 .vscode/
