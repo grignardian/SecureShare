@@ -1,51 +1,70 @@
-# SecureShare — Offline File Encryption
+# SecureShare
 
-SecureShare is a local Tkinter desktop app for encrypting a file for another person and decrypting a bundle received separately. It has no accounts, server, network connections, upload/download feature, or shared key directory. The app never transfers files; use your preferred method to exchange public keys and encrypted bundles.
+**Keep files private. Share them your way.**
 
-## What it does
+SecureShare is a small desktop app for encrypting files before you pass them to someone. It runs locally on your computer: there are no accounts, servers, or file uploads.
 
-- Creates one local RSA-2048 key pair. The private key is encrypted on disk with a passphrase; the public key can be exported.
-- Imports other people’s public keys into a local contact book under `keys/contacts.json`.
-- Encrypts each selected file with a fresh AES-256 key and AES-GCM. RSA-OAEP with SHA-256 wraps that AES key for the chosen recipient.
-- Authenticates the bundle metadata and encrypted content with AES-GCM. Decryption writes no output unless authentication succeeds.
-- Saves a versioned `.secureshare` bundle. Decryption suggests the original filename, strips path components, and requires the user to choose an output location.
+## How it works
 
-## Setup
+When you encrypt a file, SecureShare creates a random AES key and encrypts the file with it. It then locks that AES key with the recipient’s public key. Only the matching private key can unlock the file.
 
-Requirements: Python 3.8+, Tkinter, and the `cryptography` package.
+The encrypted output is a `.secureshare` bundle. You can send that bundle using email, a USB drive, or another service. SecureShare itself does not transfer it.
+
+## Get started
+
+You’ll need Python 3.8 or later, Tkinter, and the `cryptography` package.
 
 ```bash
 python3 -m pip install -r requirements.txt
 python3 src/app.py
 ```
 
-On some Linux distributions, Tkinter must be installed separately (for example, `python3-tk`).
+On some Linux systems, install Tkinter separately (often packaged as `python3-tk`).
 
-## First-time setup and exchanging keys
+## Set up your keys
 
-1. Open **My Keys** and generate a key pair. Choose a strong passphrase for the private key.
-2. Export **your public key** and give it to people who may send files to you. Never share your private key.
-3. Ask a recipient for their public key file and import it in **Contacts / Public Keys**.
-4. Verify the displayed SHA-256 fingerprint with the key owner through a trusted channel before relying on that key. A local contact list cannot establish identity on its own.
+1. Open **My Keys** and choose **Create key pair**.
+2. Set a passphrase to protect your private key.
+3. Choose **Export public key** and share that file with people who will send you encrypted files.
+4. Ask your recipient for their public-key file. In **Contacts**, choose **Import public key** and give it a name you’ll recognize.
 
-Your private key is saved under `keys/my_private_key.pem` and the public key under `keys/my_public_key.pem`. Private key file permissions are restricted to the owner where the operating system supports that. Back up the private key securely: losing it means files encrypted for that key cannot be decrypted.
+Your keys and contacts stay in the local `keys/` folder:
 
-## Encrypt and decrypt
+- `my_private_key.pem` — your passphrase-protected private key. Keep it private and make a secure backup.
+- `my_public_key.pem` — your public key, which you can share.
+- `contacts.json` — names and public keys you import.
 
-To encrypt, select a file, choose a contact, and click **Encrypt file**. Choose where to save the `.secureshare` bundle, then transfer that bundle yourself. The recipient needs the matching private key on their device.
+The private key is saved with owner-only file permissions where supported. If you lose it, files encrypted for that key cannot be recovered. SecureShare won’t silently replace an existing key pair.
 
-To decrypt, select a `.secureshare` bundle, enter the passphrase that protects your private key, and choose where to save the restored file. Existing files are not replaced without a confirmation in the GUI. Wrong keys, malformed bundles, or changes to authenticated content or metadata cause decryption to fail.
+## Encrypt a file
 
-## Bundle format
+1. Open **Encrypt** and browse to the file.
+2. Choose a recipient from your contacts.
+3. Choose where to save the `.secureshare` bundle.
+4. Share the bundle with the recipient using a method outside SecureShare.
 
-Version 2 bundles contain a magic signature, a length-prefixed JSON metadata header, a 12-byte AES-GCM nonce, and AES-GCM ciphertext with its authentication tag. Metadata includes a suggested filename, plaintext size and SHA-256 digest, format version, and the RSA-wrapped AES key. The exact serialized metadata is supplied to AES-GCM as associated authenticated data, so tampering with it is detected. Filename metadata is treated only as a suggestion; path components are removed and the user chooses the actual output path.
+## Decrypt a file
 
-The current implementation loads files into memory and limits plaintext files to 50 MiB. RSA-2048 and AES-256-GCM are provided by `cryptography`; cryptographic primitives are not implemented by this project. The app does not sign files, so encryption alone does not prove who created a bundle. Anyone with a recipient’s public key can encrypt to them. Verify public-key fingerprints independently to reduce key-substitution risk.
+1. Open **Decrypt** and choose the `.secureshare` bundle.
+2. Enter the passphrase for your private key.
+3. Choose where to save the restored file.
+
+SecureShare checks the encrypted content before saving. If the bundle is damaged, changed, or made for a different key, decryption fails. Existing output files require confirmation before replacement.
+
+## A few things to know
+
+- Keep your private key and passphrase to yourself. Share only public keys.
+- Anyone who has a recipient’s public key can encrypt a file for them. Encryption doesn’t prove who created the file; this version doesn’t add digital signatures.
+- Imported contacts are stored on this computer and aren’t synced with other devices.
+- Files up to 50 MiB are supported. The app currently loads the selected file into memory while encrypting or decrypting.
+- Files are selected with the **Browse** buttons; drag and drop isn’t available yet.
 
 ## Tests
+
+Run the tests with:
 
 ```bash
 python3 -m unittest -v tests/test_secureshare.py
 ```
 
-Tests use temporary directories for keys, contacts, sample files, and bundles.
+Tests use temporary folders so they don’t touch your real keys or contacts.
