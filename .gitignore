@@ -3,24 +3,19 @@ __pycache__/
 *.py[cod]
 *$py.class
 
-# Local SQLite databases
-*.db
-secureshare.db
-
-# Encrypted Vault & Local Storage (do not commit ciphertext or downloads)
-encrypted_vault/*.enc
+# Local custom accounts, private custom keys, and downloads
+local_keys/
 downloads/*
 !downloads/.gitkeep
-!encrypted_vault/.gitkeep
 
-# Cryptographic Keys (Never commit private keys to GitHub)
-user_keys/*.pem
-!user_keys/.gitkeep
+# Temporary encrypted files
+*.secureshare
+*.db
 
 # Legacy / Synopsis documents
 documentation/
 
-# OS generated files
+# OS / Editor generated files
 .DS_Store
 .idea/
 .vscode/
