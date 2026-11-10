@@ -15,35 +15,70 @@ from src import crypto, keystore
 
 def main():
     root = tk.Tk()
-    root.title("SecureShare — Offline File Encryption")
-    root.geometry("760x560")
-    root.minsize(640, 460)
+    root.title("SecureShare | Private by design")
+    root.geometry("900x680")
+    root.minsize(720, 560)
+    root.configure(bg="#F3F5F9")
 
-    frame = ttk.Frame(root, padding=16)
+    # Use the cross-platform clam theme as a clean base, then define a small,
+    # consistent palette rather than relying on OS-specific widget defaults.
+    style = ttk.Style(root)
+    if "clam" in style.theme_names():
+        style.theme_use("clam")
+    style.configure("TFrame", background="#F3F5F9")
+    style.configure("Card.TFrame", background="#FFFFFF")
+    style.configure("TLabel", background="#FFFFFF", foreground="#243047", font=("Segoe UI", 10))
+    style.configure("Card.TLabel", background="#FFFFFF", foreground="#243047", font=("Segoe UI", 10))
+    style.configure("Panel.TLabel", background="#F6F8FC", foreground="#243047", font=("Segoe UI", 10))
+    style.configure("Title.TLabel", background="#F3F5F9", foreground="#17233B", font=("Segoe UI", 24, "bold"))
+    style.configure("Subtitle.TLabel", background="#F3F5F9", foreground="#69758A", font=("Segoe UI", 10))
+    style.configure("Section.TLabel", background="#FFFFFF", foreground="#17233B", font=("Segoe UI", 15, "bold"))
+    style.configure("Hint.TLabel", background="#FFFFFF", foreground="#718096", font=("Segoe UI", 9))
+    style.configure("TNotebook", background="#F3F5F9", borderwidth=0, tabmargins=(0, 0, 0, 0))
+    style.configure("TNotebook.Tab", background="#E8ECF3", foreground="#667085", padding=(18, 11), font=("Segoe UI", 10, "bold"), borderwidth=0)
+    style.map("TNotebook.Tab", background=[("selected", "#FFFFFF"), ("active", "#DDE5F1")], foreground=[("selected", "#315CFF")])
+    style.configure("TEntry", fieldbackground="#FFFFFF", foreground="#243047", padding=9, bordercolor="#DDE3EC")
+    style.configure("TCombobox", fieldbackground="#FFFFFF", foreground="#243047", padding=8, arrowcolor="#52627A")
+    style.configure("TButton", background="#E8ECF3", foreground="#34415A", padding=(13, 9), borderwidth=0, font=("Segoe UI", 9, "bold"))
+    style.map("TButton", background=[("active", "#D9E0EB"), ("pressed", "#CBD5E3")])
+    style.configure("Primary.TButton", background="#315CFF", foreground="#FFFFFF", padding=(15, 11), font=("Segoe UI", 10, "bold"))
+    style.map("Primary.TButton", background=[("active", "#244BE0"), ("pressed", "#1D3FC2")], foreground=[("active", "#FFFFFF")])
+    style.configure("Treeview", background="#FFFFFF", fieldbackground="#FFFFFF", foreground="#34415A", rowheight=32, borderwidth=0, font=("Segoe UI", 9))
+    style.configure("Treeview.Heading", background="#F3F5F9", foreground="#718096", font=("Segoe UI", 9, "bold"), relief="flat")
+
+    frame = ttk.Frame(root, padding=(30, 24, 30, 26))
     frame.pack(fill=tk.BOTH, expand=True)
-    ttk.Label(frame, text="SecureShare", font=("TkDefaultFont", 18, "bold")).pack(anchor=tk.W)
-    ttk.Label(frame, text="Encrypt files locally. Share encrypted bundles separately.").pack(anchor=tk.W, pady=(0, 12))
+    header = ttk.Frame(frame)
+    header.pack(fill=tk.X, pady=(0, 22))
+    brand = ttk.Frame(header)
+    brand.pack(side=tk.LEFT)
+    ttk.Label(brand, text="SecureShare", style="Title.TLabel").pack(anchor=tk.W)
+    ttk.Label(brand, text="Private file encryption, kept on your device", style="Subtitle.TLabel").pack(anchor=tk.W, pady=(2, 0))
+    ttk.Label(header, text="●  LOCAL ONLY", background="#E5F5EF", foreground="#14805E", padding=(12, 8), font=("Segoe UI", 8, "bold")).pack(side=tk.RIGHT, anchor=tk.CENTER)
     tabs = ttk.Notebook(frame)
     tabs.pack(fill=tk.BOTH, expand=True)
-    keys_tab = ttk.Frame(tabs, padding=14)
-    contacts_tab = ttk.Frame(tabs, padding=14)
-    encrypt_tab = ttk.Frame(tabs, padding=14)
-    decrypt_tab = ttk.Frame(tabs, padding=14)
-    tabs.add(keys_tab, text="My Keys")
-    tabs.add(contacts_tab, text="Contacts / Public Keys")
-    tabs.add(encrypt_tab, text="Encrypt File")
-    tabs.add(decrypt_tab, text="Decrypt File")
+    keys_tab = ttk.Frame(tabs, padding=24, style="Card.TFrame")
+    contacts_tab = ttk.Frame(tabs, padding=24, style="Card.TFrame")
+    encrypt_tab = ttk.Frame(tabs, padding=24, style="Card.TFrame")
+    decrypt_tab = ttk.Frame(tabs, padding=24, style="Card.TFrame")
+    tabs.add(keys_tab, text="MY KEYS")
+    tabs.add(contacts_tab, text="CONTACTS")
+    tabs.add(encrypt_tab, text="ENCRYPT")
+    tabs.add(decrypt_tab, text="DECRYPT")
 
     key_status = tk.StringVar()
-    ttk.Label(keys_tab, textvariable=key_status, wraplength=660).pack(anchor=tk.W, pady=(0, 12))
+    ttk.Label(keys_tab, text="Your identity", style="Section.TLabel").pack(anchor=tk.W)
+    ttk.Label(keys_tab, text="Your private key stays on this device and is protected by your passphrase.", style="Hint.TLabel").pack(anchor=tk.W, pady=(4, 18))
+    key_card = tk.Frame(keys_tab, bg="#F6F8FC", padx=16, pady=15, highlightthickness=1, highlightbackground="#E8ECF3")
+    key_card.pack(fill=tk.X, pady=(0, 18))
+    ttk.Label(key_card, textvariable=key_status, wraplength=700, style="Panel.TLabel").pack(anchor=tk.W)
 
     def refresh_key_status():
         if (os.path.exists(keystore.get_private_key_path())
                 or os.path.exists(keystore.get_public_key_path())):
             try:
                 pub = keystore.load_public_key()
-                fp = keystore.compute_fingerprint(pub)
-                key_status.set("Local RSA private key is present and passphrase-protected.\nFingerprint: " + fp)
+                key_status.set("RSA key pair ready  ·  private key protected with your passphrase")
             except Exception as exc:
                 key_status.set("Key files need attention: " + str(exc))
         else:
@@ -81,22 +116,26 @@ def main():
         if path:
             try:
                 keystore.export_public_key(path)
-                messagebox.showinfo("Public key exported", "Fingerprint:\n" + keystore.compute_fingerprint(keystore.load_public_key()))
+                messagebox.showinfo("Public key exported", "Your public key is ready to share. Keep your private key to yourself.")
             except Exception as exc:
                 messagebox.showerror("Export failed", str(exc))
 
-    ttk.Button(keys_tab, text="Generate RSA key pair", command=generate_keys).pack(anchor=tk.W, pady=4)
-    ttk.Button(keys_tab, text="Export my public key…", command=export_public).pack(anchor=tk.W, pady=4)
-    ttk.Label(keys_tab, text="Keep your private key and passphrase safe. If the private key is lost, files encrypted for it cannot be recovered.", wraplength=660).pack(anchor=tk.W, pady=(14, 0))
+    key_actions = ttk.Frame(keys_tab, style="Card.TFrame")
+    key_actions.pack(fill=tk.X)
+    ttk.Button(key_actions, text="Create key pair", command=generate_keys, style="Primary.TButton").pack(side=tk.LEFT, padx=(0, 9))
+    ttk.Button(key_actions, text="Export public key", command=export_public).pack(side=tk.LEFT)
+    ttk.Label(keys_tab, text="Keep a secure backup of your private key. If it is lost, files encrypted for it cannot be recovered.", style="Hint.TLabel", wraplength=700).pack(anchor=tk.W, pady=(22, 0))
 
-    contact_list = tk.Listbox(contacts_tab, height=12)
+    ttk.Label(contacts_tab, text="Your people", style="Section.TLabel").pack(anchor=tk.W)
+    ttk.Label(contacts_tab, text="Import a public key to add someone to your local recipient list.", style="Hint.TLabel").pack(anchor=tk.W, pady=(4, 16))
+    contact_list = tk.Listbox(contacts_tab, height=12, bg="#F8FAFD", fg="#34415A", selectbackground="#DCE6FF", selectforeground="#203FBB", highlightthickness=1, highlightbackground="#E8ECF3", relief="flat", font=("Segoe UI", 10), activestyle="none")
     contact_list.pack(fill=tk.BOTH, expand=True, pady=(0, 8))
 
     def refresh_contacts():
         contact_list.delete(0, tk.END)
         try:
             for item in keystore.load_contacts():
-                contact_list.insert(tk.END, f"{item['name']} — {item['fingerprint']}")
+                contact_list.insert(tk.END, f"  {item['name']}")
         except Exception as exc:
             messagebox.showerror("Contact book error", str(exc))
 
@@ -111,7 +150,7 @@ def main():
             contact = keystore.import_contact_from_file(name.strip(), path)
             refresh_contacts()
             refresh_contacts_combo()
-            messagebox.showinfo("Contact imported", "Verify this fingerprint with the contact:\n\n" + contact["fingerprint"])
+            messagebox.showinfo("Contact imported", f"{contact['name']} is ready to select as a recipient.")
         except Exception as exc:
             messagebox.showerror("Import failed", str(exc))
 
@@ -128,12 +167,13 @@ def main():
 
     contact_buttons = ttk.Frame(contacts_tab)
     contact_buttons.pack(fill=tk.X)
-    ttk.Button(contact_buttons, text="Import public key…", command=import_contact).pack(side=tk.LEFT)
+    ttk.Button(contact_buttons, text="Import public key", command=import_contact, style="Primary.TButton").pack(side=tk.LEFT)
     ttk.Button(contact_buttons, text="Remove selected", command=remove_contact).pack(side=tk.LEFT, padx=8)
-    ttk.Label(contacts_tab, text="Compare fingerprints through a trusted channel before encrypting to a newly imported key.", wraplength=660).pack(anchor=tk.W, pady=(10, 0))
+    ttk.Label(contacts_tab, text="Contacts are stored only on this device. Remove an old entry before importing a replacement key.", style="Hint.TLabel", wraplength=700).pack(anchor=tk.W, pady=(16, 0))
 
     encrypt_path = tk.StringVar()
-    ttk.Label(encrypt_tab, text="Choose a file and recipient public key. The encrypted .secureshare bundle is saved locally.", wraplength=650).pack(anchor=tk.W, pady=(0, 10))
+    ttk.Label(encrypt_tab, text="Encrypt for someone", style="Section.TLabel").pack(anchor=tk.W)
+    ttk.Label(encrypt_tab, text="Choose a file and recipient. The encrypted bundle is saved on this device.", style="Hint.TLabel", wraplength=700).pack(anchor=tk.W, pady=(4, 18))
     erow = ttk.Frame(encrypt_tab)
     erow.pack(fill=tk.X)
     ttk.Entry(erow, textvariable=encrypt_path).pack(side=tk.LEFT, fill=tk.X, expand=True)
@@ -141,7 +181,7 @@ def main():
         p = filedialog.askopenfilename(title="Choose file to encrypt")
         if p: encrypt_path.set(p)
     ttk.Button(erow, text="Browse…", command=browse_encrypt).pack(side=tk.LEFT, padx=(8, 0))
-    ttk.Label(encrypt_tab, text="Recipient:").pack(anchor=tk.W, pady=(14, 4))
+    ttk.Label(encrypt_tab, text="RECIPIENT", style="Hint.TLabel").pack(anchor=tk.W, pady=(18, 7))
     recipient = ttk.Combobox(encrypt_tab, state="readonly")
     recipient.pack(fill=tk.X)
     enc_status = tk.StringVar(value="")
@@ -175,10 +215,11 @@ def main():
             messagebox.showinfo("Encryption complete", "Share the encrypted bundle separately. SecureShare does not send files.")
         except Exception as exc:
             messagebox.showerror("Encryption failed", str(exc))
-    ttk.Button(encrypt_tab, text="Encrypt file", command=encrypt_selected).pack(fill=tk.X, pady=4)
+    ttk.Button(encrypt_tab, text="Encrypt file", command=encrypt_selected, style="Primary.TButton").pack(fill=tk.X, pady=(12, 4))
 
     decrypt_path = tk.StringVar()
-    ttk.Label(decrypt_tab, text="Choose a .secureshare bundle. You need the private key that matches the recipient public key.", wraplength=650).pack(anchor=tk.W, pady=(0, 10))
+    ttk.Label(decrypt_tab, text="Unlock a received bundle", style="Section.TLabel").pack(anchor=tk.W)
+    ttk.Label(decrypt_tab, text="Choose a .secureshare bundle and save the restored file where you want it.", style="Hint.TLabel", wraplength=700).pack(anchor=tk.W, pady=(4, 18))
     drow = ttk.Frame(decrypt_tab)
     drow.pack(fill=tk.X)
     ttk.Entry(drow, textvariable=decrypt_path).pack(side=tk.LEFT, fill=tk.X, expand=True)
@@ -219,7 +260,7 @@ def main():
         except Exception as exc:
             messagebox.showerror("Decryption failed", str(exc))
 
-    ttk.Button(decrypt_tab, text="Decrypt file", command=decrypt_selected).pack(fill=tk.X, pady=4)
+    ttk.Button(decrypt_tab, text="Decrypt file", command=decrypt_selected, style="Primary.TButton").pack(fill=tk.X, pady=(12, 4))
     refresh_key_status()
     refresh_contacts()
     refresh_contacts_combo()
