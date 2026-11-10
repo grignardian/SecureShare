@@ -1,21 +1,18 @@
-# Byte-compiled / optimized / DLL files
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
 
-# Local custom accounts, private custom keys, and downloads
+# Runtime data & local keys
 local_keys/
-downloads/*
-!downloads/.gitkeep
-
-# Temporary encrypted files
+downloads/
 *.secureshare
 *.db
 
-# Legacy / Synopsis documents
+# Local-only documents
 documentation/
 
-# OS / Editor generated files
+# OS / IDE
 .DS_Store
 .idea/
 .vscode/

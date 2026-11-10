@@ -1,3 +1,0 @@
-CONFIDENTIAL — SecureShare Test Document
-This file is encrypted with AES-256-CBC before transmission.
-Only the intended recipient can decrypt it using their RSA-2048 private key.

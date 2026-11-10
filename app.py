@@ -481,7 +481,7 @@ class App(tk.Tk):
             self._set_encrypt_paths(path)
 
     def _create_sample_input(self):
-        path = os.path.join(BASE, "sample_document.txt")
+        path = os.path.join(DOWNLOADS, "sample_document.txt")
         with open(path, "w", encoding="utf-8") as f:
             f.write(
                 "CONFIDENTIAL DOCUMENT\n"
