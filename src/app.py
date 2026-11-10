@@ -117,7 +117,7 @@ def main():
             result = crypto.encrypt_file(input_file, output_file, public_key_pem)
             enc_status_box.config(state=tk.NORMAL)
             enc_status_box.delete("1.0", tk.END)
-            enc_status_box.insert(tk.END, "✔ File successfully encrypted!\n\n")
+            enc_status_box.insert(tk.END, "File successfully encrypted.\n\n")
             enc_status_box.insert(tk.END, f"Original File:   {result['filename']}\n")
             enc_status_box.insert(tk.END, f"Original Size:   {result['original_size']} bytes\n")
             enc_status_box.insert(tk.END, f"Encrypted Size:  {result['encrypted_size']} bytes\n")
@@ -192,7 +192,7 @@ def main():
             result = crypto.decrypt_file(input_file, output_file, private_key_pem)
             dec_status_box.config(state=tk.NORMAL)
             dec_status_box.delete("1.0", tk.END)
-            dec_status_box.insert(tk.END, "✔ File successfully decrypted & integrity verified!\n\n")
+            dec_status_box.insert(tk.END, "File successfully decrypted and integrity verified.\n\n")
             dec_status_box.insert(tk.END, f"Restored Name:   {result['filename']}\n")
             dec_status_box.insert(tk.END, f"Restored Size:   {result['restored_size']} bytes\n")
             dec_status_box.insert(tk.END, f"Verified SHA256: {result['sha256']}\n")
@@ -267,9 +267,9 @@ def main():
     tab_decrypt = ttk.Frame(notebook, padding=14)
     tab_keys = ttk.Frame(notebook, padding=14)
 
-    notebook.add(tab_encrypt, text="  🔒 Encrypt File  ")
-    notebook.add(tab_decrypt, text="  🔓 Decrypt File  ")
-    notebook.add(tab_keys, text="  🔑 Key Management  ")
+    notebook.add(tab_encrypt, text="  Encrypt File  ")
+    notebook.add(tab_decrypt, text="  Decrypt File  ")
+    notebook.add(tab_keys, text="  Key Management  ")
 
     # =======================================================================
     # TAB 1: ENCRYPT
@@ -303,7 +303,7 @@ def main():
     # Encrypt Action Button
     enc_btn = tk.Button(
         tab_encrypt,
-        text="🔒 Encrypt and Lock File",
+        text="Encrypt and Lock File",
         command=on_encrypt_click,
         bg="#2563eb",
         fg="#ffffff",
@@ -351,7 +351,7 @@ def main():
     # Decrypt Action Button
     dec_btn = tk.Button(
         tab_decrypt,
-        text="🔓 Decrypt and Verify File",
+        text="Decrypt and Verify File",
         command=on_decrypt_click,
         bg="#059669",
         fg="#ffffff",
