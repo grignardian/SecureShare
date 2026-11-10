@@ -1,157 +1,124 @@
 """
-Unit Tests for SecureShare
-Tests:
-1. AES-256-CBC Encryption & Decryption (with PKCS7 padding)
-2. RSA-2048 Key Pair Generation, OAEP Encapsulation & Decryption
-3. SHA-256 Hash Generation & Tamper Detection
-4. PBKDF2 Password Hashing with Salt Verification
-5. Portable .secureshare Bundle (Encrypt, Inspect, Decrypt, WrongKeyError, TamperDetectedError)
-6. Fixed Cross-Device Profiles & Local Keystore Management
+test_secureshare.py - Simple Unit Tests for SecureShare
+-------------------------------------------------------
+Tests the core security and functional requirements:
+1. Successful file encryption and decryption roundtrip.
+2. File integrity verification (detecting tampered ciphertext via SHA-256).
+3. Incorrect private key handling (rejecting unauthorized decryption).
+4. Missing input file error handling.
+5. Key generation and loading from keystore.
 """
 
 import os
 import sys
-import json
-import struct
 import unittest
 import tempfile
-import shutil
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+# Add project root to sys.path
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
 
-import crypto
-import keystore
+from src import crypto, keystore
 
 
-class TestCrypto(unittest.TestCase):
+class TestSecureShare(unittest.TestCase):
 
-    def test_aes_encryption_decryption(self):
-        key = crypto.new_aes_key()
-        self.assertEqual(len(key), 32)
-        plaintext = b"SecureShare end-to-end encryption test data string."
-        ciphertext = crypto.aes_encrypt(plaintext, key)
-        self.assertNotEqual(plaintext, ciphertext)
-        decrypted = crypto.aes_decrypt(ciphertext, key)
-        self.assertEqual(plaintext, decrypted)
+    def setUp(self):
+        """Create a temporary directory and test files before each test."""
+        self.test_dir = tempfile.TemporaryDirectory()
+        self.sample_file = os.path.join(self.test_dir.name, "sample.txt")
+        self.encrypted_file = os.path.join(self.test_dir.name, "sample.txt.secureshare")
+        self.decrypted_file = os.path.join(self.test_dir.name, "sample_restored.txt")
 
-    def test_rsa_keypair_and_oaep(self):
-        priv_pem, pub_pem = crypto.generate_rsa_keypair()
+        # Write test data
+        self.original_content = b"SecureShare College PBL Evaluation Test Data: Confidential Content 12345."
+        with open(self.sample_file, "wb") as f:
+            f.write(self.original_content)
+
+        # Generate test keypairs for Bob and Alice
+        keystore.KEYS_DIR = os.path.join(self.test_dir.name, "keys")
+        self.bob_priv, self.bob_pub = keystore.generate_keypair("bob")
+        self.alice_priv, self.alice_pub = keystore.generate_keypair("alice")
+
+    def tearDown(self):
+        """Clean up temporary directory after each test."""
+        self.test_dir.cleanup()
+
+    def test_successful_encryption_and_decryption(self):
+        """Test complete encryption and decryption flow."""
+        # 1. Encrypt file for Bob
+        result_enc = crypto.encrypt_file(self.sample_file, self.encrypted_file, self.bob_pub)
+        self.assertTrue(os.path.exists(self.encrypted_file))
+        self.assertGreater(result_enc["encrypted_size"], 0)
+
+        # Encrypted file content must differ from plaintext
+        with open(self.encrypted_file, "rb") as f:
+            enc_data = f.read()
+        self.assertNotEqual(enc_data, self.original_content)
+
+        # 2. Decrypt file using Bob's private key
+        result_dec = crypto.decrypt_file(self.encrypted_file, self.decrypted_file, self.bob_priv)
+        self.assertTrue(os.path.exists(self.decrypted_file))
+
+        # 3. Verify content matches original exactly
+        with open(self.decrypted_file, "rb") as f:
+            restored_data = f.read()
+        self.assertEqual(restored_data, self.original_content)
+        self.assertEqual(result_dec["sha256"], result_enc["sha256"])
+
+    def test_incorrect_private_key_fails(self):
+        """Test that decrypting with the wrong private key raises DecryptionError."""
+        # Encrypt for Bob
+        crypto.encrypt_file(self.sample_file, self.encrypted_file, self.bob_pub)
+
+        # Attempt to decrypt using Alice's private key
+        with self.assertRaises(crypto.DecryptionError):
+            crypto.decrypt_file(self.encrypted_file, self.decrypted_file, self.alice_priv)
+
+    def test_tampered_file_detected(self):
+        """Test that modifying even a single byte in ciphertext triggers IntegrityError."""
+        crypto.encrypt_file(self.sample_file, self.encrypted_file, self.bob_pub)
+
+        # Read encrypted bundle and flip a byte near the end (in the ciphertext)
+        with open(self.encrypted_file, "rb") as f:
+            bundle_bytes = bytearray(f.read())
+
+        bundle_bytes[-5] ^= 0xFF  # Corrupt a byte in ciphertext
+
+        with open(self.encrypted_file, "wb") as f:
+            f.write(bundle_bytes)
+
+        # Decryption must detect tampering and raise IntegrityError
+        with self.assertRaises(crypto.IntegrityError):
+            crypto.decrypt_file(self.encrypted_file, self.decrypted_file, self.bob_priv)
+
+    def test_missing_input_file(self):
+        """Test that encrypting or decrypting a non-existent file raises FileNotFoundError."""
+        non_existent = os.path.join(self.test_dir.name, "does_not_exist.txt")
+
+        with self.assertRaises(FileNotFoundError):
+            crypto.encrypt_file(non_existent, self.encrypted_file, self.bob_pub)
+
+        with self.assertRaises(FileNotFoundError):
+            crypto.decrypt_file(non_existent, self.decrypted_file, self.bob_priv)
+
+    def test_key_generation_and_loading(self):
+        """Test generating and loading RSA keys."""
+        priv_pem, pub_pem = keystore.generate_keypair("student")
         self.assertIn("BEGIN PRIVATE KEY", priv_pem)
         self.assertIn("BEGIN PUBLIC KEY", pub_pem)
-        self.assertTrue(crypto.validate_public_key(pub_pem))
-        self.assertTrue(crypto.validate_private_key(priv_pem))
-        aes_key = crypto.new_aes_key()
-        encrypted_key = crypto.rsa_encrypt(pub_pem, aes_key)
-        self.assertNotEqual(aes_key, encrypted_key)
-        decrypted_key = crypto.rsa_decrypt(priv_pem, encrypted_key)
-        self.assertEqual(aes_key, decrypted_key)
 
-    def test_sha256_and_tamper_detection(self):
-        data = b"Original uncorrupted document."
-        h1 = crypto.sha256(data)
-        h2 = crypto.sha256(data)
-        self.assertEqual(h1, h2)
-        tampered = bytearray(data)
-        tampered[0] ^= 0xFF
-        h_tampered = crypto.sha256(bytes(tampered))
-        self.assertNotEqual(h1, h_tampered)
+        loaded_pub = keystore.load_public_key("student")
+        loaded_priv = keystore.load_private_key("student")
 
-    def test_pbkdf2_password_hashing(self):
-        salt, pw_hash = crypto.hash_password("SuperSecret123!")
-        self.assertTrue(crypto.check_password("SuperSecret123!", salt, pw_hash))
-        self.assertFalse(crypto.check_password("WrongPassword!", salt, pw_hash))
+        self.assertEqual(pub_pem, loaded_pub)
+        self.assertEqual(priv_pem, loaded_priv)
 
-    def test_portable_bundle_roundtrip_and_security(self):
-        bob_priv, bob_pub     = crypto.generate_rsa_keypair()
-        alice_priv, _         = crypto.generate_rsa_keypair()
-        payload = b"Portable cross-device encrypted file payload!" * 5
-
-        bundle, info = crypto.encrypt_file_bundle(
-            plaintext=payload,
-            filename="../../evil/path/report.pdf",
-            recipient_pub_pem=bob_pub,
-            recipient_name="bob",
-            sender_name="alice",
-        )
-        # Path traversal sanitization check
-        self.assertEqual(info["filename"], "report.pdf")
-
-        header, ct = crypto.inspect_file_bundle(bundle)
-        self.assertEqual(header["filename"], "report.pdf")
-        self.assertEqual(header["recipient"], "bob")
-        self.assertGreater(len(ct), len(payload))
-
-        # Wrong key must fail with WrongKeyError
-        with self.assertRaises(crypto.WrongKeyError):
-            crypto.decrypt_file_bundle(bundle, alice_priv)
-
-        # Valid key succeeds and verifies hash
-        dec_hdr, decrypted, got_sha = crypto.decrypt_file_bundle(bundle, bob_priv)
-        self.assertEqual(decrypted, payload)
-        self.assertEqual(got_sha, info["sha256"])
-        self.assertEqual(dec_hdr["filename"], "report.pdf")
-
-        # 1-byte tamper inside ciphertext triggers TamperDetectedError
-        tampered = bytearray(bundle)
-        tampered[info["header_offset"] + 18] ^= 0xFF
-        with self.assertRaises(crypto.TamperDetectedError):
-            crypto.decrypt_file_bundle(bytes(tampered), bob_priv)
-
-        # Invalid magic signature raises InvalidBundleError
-        with self.assertRaises(crypto.InvalidBundleError):
-            crypto.inspect_file_bundle(b"NOT_A_VALID_BUNDLE")
-
-
-class TestKeystore(unittest.TestCase):
-
-    def test_fixed_profiles_cross_device_bundle(self):
-        keystore.ensure_fixed_profiles()
-        ok_bob, _   = keystore.authenticate("bob", "Bob123!")
-        ok_alice, _ = keystore.authenticate("alice", "Alice123!")
-        self.assertTrue(ok_bob)
-        self.assertTrue(ok_alice)
-
-        ok_bad, _ = keystore.authenticate("bob", "WrongPass")
-        self.assertFalse(ok_bad)
-
-        bob_pub   = keystore.get_public_key("bob")
-        bob_priv  = keystore.get_private_key("bob")
-        alice_priv = keystore.get_private_key("alice")
-
-        data = b"Cross-device file encrypted by Alice for Bob."
-        bundle, _ = crypto.encrypt_file_bundle(data, "memo.txt", bob_pub, "bob", "alice")
-
-        with self.assertRaises(crypto.WrongKeyError):
-            crypto.decrypt_file_bundle(bundle, alice_priv)
-
-        _, plain, _ = crypto.decrypt_file_bundle(bundle, bob_priv)
-        self.assertEqual(plain, data)
-
-    def test_local_user_and_contact_import(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            orig_local = keystore.LOCAL_DIR
-            orig_contacts = keystore.CONTACTS_DIR
-            orig_lfile = keystore.LOCAL_PROFILES_FILE
-            try:
-                keystore.LOCAL_DIR = tmp
-                keystore.CONTACTS_DIR = os.path.join(tmp, "contacts")
-                keystore.LOCAL_PROFILES_FILE = os.path.join(tmp, "profiles.json")
-                os.makedirs(keystore.CONTACTS_DIR, exist_ok=True)
-
-                ok, _ = keystore.register_user("charlie_test", "Charlie123!")
-                self.assertTrue(ok)
-                auth_ok, _ = keystore.authenticate("charlie_test", "Charlie123!")
-                self.assertTrue(auth_ok)
-
-                _, ext_pub = crypto.generate_rsa_keypair()
-                imp_ok, _ = keystore.import_contact("david_ext", ext_pub)
-                self.assertTrue(imp_ok)
-                self.assertEqual(keystore.get_public_key("david_ext").strip(), ext_pub.strip())
-                self.assertTrue(keystore.delete_contact("david_ext"))
-            finally:
-                keystore.LOCAL_DIR = orig_local
-                keystore.CONTACTS_DIR = orig_contacts
-                keystore.LOCAL_PROFILES_FILE = orig_lfile
+        keys = keystore.list_available_keys()
+        self.assertIn("student", keys)
+        self.assertIn("bob", keys)
+        self.assertIn("alice", keys)
 
 
 if __name__ == "__main__":

@@ -1,18 +1,25 @@
-# Python
+# Python bytecode
 __pycache__/
 *.py[cod]
 *$py.class
+*.egg-info/
+build/
+dist/
 
-# Runtime data & local keys
+# Virtual environment
+.venv/
+venv/
+ENV/
+
+# Cryptographic Keys (do not commit secret keys)
+keys/
 local_keys/
-downloads/
+
+# Encrypted temporary/output bundles
 *.secureshare
-*.db
+downloads/
 
-# Local-only documents
-documentation/
-
-# OS / IDE
+# IDE and OS
 .DS_Store
 .idea/
 .vscode/
