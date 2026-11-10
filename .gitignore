@@ -35,3 +35,7 @@ downloads/
 .DS_Store
 .idea/
 .vscode/
+
+# Offline app local identity and contacts
+keys/
+*.secureshare
