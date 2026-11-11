@@ -39,3 +39,4 @@ downloads/
 # Offline app local identity and contacts
 keys/
 *.secureshare
+local_data/
