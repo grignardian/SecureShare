@@ -2,6 +2,7 @@
 """Offline Tkinter interface for local file encryption and decryption."""
 import os
 import sys
+from datetime import datetime
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, simpledialog
 
@@ -10,7 +11,7 @@ PROJECT_ROOT = os.path.dirname(CURRENT_DIR)
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
-from src import crypto, keystore
+from src import crypto, history, keystore
 
 
 def main():
@@ -61,10 +62,12 @@ def main():
     contacts_tab = ttk.Frame(tabs, padding=24, style="Card.TFrame")
     encrypt_tab = ttk.Frame(tabs, padding=24, style="Card.TFrame")
     decrypt_tab = ttk.Frame(tabs, padding=24, style="Card.TFrame")
+    history_tab = ttk.Frame(tabs, padding=24, style="Card.TFrame")
     tabs.add(keys_tab, text="MY KEYS")
     tabs.add(contacts_tab, text="CONTACTS")
     tabs.add(encrypt_tab, text="ENCRYPT")
     tabs.add(decrypt_tab, text="DECRYPT")
+    tabs.add(history_tab, text="HISTORY")
 
     key_status = tk.StringVar()
     ttk.Label(keys_tab, text="Your identity", style="Section.TLabel").pack(anchor=tk.W)
@@ -212,6 +215,7 @@ def main():
         try:
             result = crypto.encrypt_file(source, target, contact["public_key"], overwrite=True)
             enc_status.set(f"Encrypted {result['filename']} ({result['file_size']} bytes) for {name}.\nSaved: {target}")
+            record_history("Encrypt", result["filename"], source, target, result["file_size"], name)
             messagebox.showinfo("Encryption complete", "Share the encrypted bundle separately. SecureShare does not send files.")
         except Exception as exc:
             messagebox.showerror("Encryption failed", str(exc))
@@ -256,14 +260,76 @@ def main():
         try:
             result = crypto.decrypt_file(source, target, private_key, overwrite=True)
             dec_status.set(f"Decrypted and authenticated {result['filename']} ({result['file_size']} bytes).\nSaved: {target}")
+            record_history("Decrypt", result["filename"], source, target, result["file_size"])
             messagebox.showinfo("Decryption complete", "The file authentication check passed.")
         except Exception as exc:
             messagebox.showerror("Decryption failed", str(exc))
 
     ttk.Button(decrypt_tab, text="Decrypt file", command=decrypt_selected, style="Primary.TButton").pack(fill=tk.X, pady=(12, 4))
+    ttk.Label(history_tab, text="Your activity", style="Section.TLabel").pack(anchor=tk.W)
+    ttk.Label(history_tab, text="A private, on-device record of completed encryptions and decryptions.", style="Hint.TLabel").pack(anchor=tk.W, pady=(4, 16))
+    history_toolbar = ttk.Frame(history_tab, style="Card.TFrame")
+    history_toolbar.pack(fill=tk.X, pady=(0, 10))
+    history_count = tk.StringVar(value="")
+    ttk.Label(history_toolbar, textvariable=history_count, style="Hint.TLabel").pack(side=tk.LEFT)
+
+    def refresh_history():
+        try:
+            rows = history.list_events()
+            for child in history_tree.get_children():
+                history_tree.delete(child)
+            for row in rows:
+                stamp = datetime.fromisoformat(row["occurred_at"]).astimezone().strftime("%d %b %Y  %H:%M")
+                recipient_name = row["recipient"] or "—"
+                history_tree.insert("", tk.END, values=(
+                    stamp, row["action"], row["filename"], recipient_name,
+                    format_file_size(row["file_size"]), row["output_path"]
+                ))
+            history_count.set(f"{len(rows)} {('entry' if len(rows) == 1 else 'entries')}")
+        except Exception as exc:
+            messagebox.showerror("History unavailable", str(exc))
+
+    def clear_history_view():
+        try:
+            if not history.list_events():
+                return
+            if messagebox.askyesno("Clear history", "Remove all saved encryption and decryption history from this device?"):
+                history.clear_history()
+                refresh_history()
+        except Exception as exc:
+            messagebox.showerror("Could not clear history", str(exc))
+
+    ttk.Button(history_toolbar, text="Refresh", command=refresh_history).pack(side=tk.RIGHT, padx=(8, 0))
+    ttk.Button(history_toolbar, text="Clear history", command=clear_history_view).pack(side=tk.RIGHT)
+    history_columns = ("time", "action", "filename", "recipient", "size", "saved")
+    history_tree = ttk.Treeview(history_tab, columns=history_columns, show="headings", height=11)
+    for column, label, width in (
+        ("time", "WHEN", 142), ("action", "ACTION", 85), ("filename", "FILE", 150),
+        ("recipient", "CONTACT", 110), ("size", "SIZE", 80), ("saved", "SAVED TO", 220)
+    ):
+        history_tree.heading(column, text=label)
+        history_tree.column(column, width=width, minwidth=70, anchor=tk.W, stretch=(column == "saved"))
+    history_tree.pack(fill=tk.BOTH, expand=True)
+    ttk.Label(history_tab, text="History includes file names and paths. Clear it any time from this tab.", style="Hint.TLabel").pack(anchor=tk.W, pady=(12, 0))
+
+    def record_history(action, filename, source, output, file_size, recipient_name=""):
+        try:
+            history.record_event(action, filename, source, output, file_size, recipient_name)
+            refresh_history()
+        except Exception as exc:
+            messagebox.showwarning("History not saved", "The file operation succeeded, but its history entry could not be saved:\n\n" + str(exc))
+
+    def format_file_size(size):
+        size = float(size)
+        for unit in ("B", "KB", "MB", "GB"):
+            if size < 1024 or unit == "GB":
+                return f"{size:.0f} {unit}" if unit == "B" else f"{size:.1f} {unit}"
+            size /= 1024
+
     refresh_key_status()
     refresh_contacts()
     refresh_contacts_combo()
+    refresh_history()
     tabs.bind("<<NotebookTabChanged>>", lambda _event: refresh_contacts_combo())
     root.mainloop()
 

@@ -9,7 +9,7 @@ PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
-from src import crypto, keystore
+from src import crypto, history, keystore
 
 
 class OfflineSecureShareTests(unittest.TestCase):
@@ -106,6 +106,26 @@ class OfflineSecureShareTests(unittest.TestCase):
     def test_output_cannot_replace_input(self):
         with self.assertRaises(ValueError):
             crypto.encrypt_file(self.plain, self.plain, self.public)
+
+    def test_local_history_records_and_clears_operations(self):
+        db_path = os.path.join(self.temp.name, "history.sqlite3")
+        history.record_event("Encrypt", "message.txt", self.plain, self.bundle,
+                             len(self.payload), "Friend", db_path=db_path)
+        history.record_event("Decrypt", "message.txt", self.bundle, self.output,
+                             len(self.payload), db_path=db_path)
+
+        entries = history.list_events(db_path)
+        self.assertEqual([entry["action"] for entry in entries], ["Decrypt", "Encrypt"])
+        self.assertEqual(entries[1]["recipient"], "Friend")
+        self.assertEqual(entries[0]["output_path"], os.path.abspath(self.output))
+
+        history.clear_history(db_path)
+        self.assertEqual(history.list_events(db_path), [])
+
+    def test_history_rejects_unknown_operation(self):
+        with self.assertRaises(ValueError):
+            history.record_event("Upload", "message.txt", self.plain, self.bundle,
+                                 len(self.payload), db_path=os.path.join(self.temp.name, "history.sqlite3"))
 
 
 if __name__ == "__main__":

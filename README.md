@@ -51,6 +51,12 @@ The private key is saved with owner-only file permissions where supported. If yo
 
 SecureShare checks the encrypted content before saving. If the bundle is damaged, changed, or made for a different key, decryption fails. Existing output files require confirmation before replacement.
 
+## History
+
+The **History** tab lists successful encryptions and decryptions, including the time, action, file name, contact (for encryption), file size, and saved-to path. The history is kept in a local SQLite database at `local_data/history.sqlite3`. Use **Clear history** in the tab to remove all entries.
+
+History does not contain file contents, keys, or passphrases. File names and paths can still reveal private information, so the database stays on this computer and is excluded from Git.
+
 ## A few things to know
 
 - Keep your private key and passphrase to yourself. Share only public keys.
