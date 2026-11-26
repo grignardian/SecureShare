@@ -1,18 +1,4 @@
-"""
-crypto.py - Cryptographic Operations for SecureShare
-----------------------------------------------------
-Implements hybrid encryption for offline file encryption/decryption:
-1. AES-256-GCM authenticated encryption (file encryption + integrity).
-2. RSA-2048 OAEP with SHA-256 (wraps the 32-byte AES key).
-3. SHA-256 hash of the original plaintext (post-decrypt verification).
-
-Encrypted bundle binary format (version 2):
-  [9 bytes]   Magic signature ('SECSHARE2')
-  [4 bytes]   Metadata JSON length (unsigned int, big-endian)
-  [N bytes]   UTF-8 JSON metadata: {format_version, filename, file_size, sha256, encrypted_key}
-  [12 bytes]  GCM nonce
-  [remaining] AES-256-GCM ciphertext + 16-byte GCM authentication tag
-"""
+# Cryptographic helpers for offline file encryption (AES-256-GCM, RSA-2048 OAEP, SHA-256)
 
 import os
 import json
@@ -30,30 +16,23 @@ GCM_NONCE_SIZE = 12  # 96-bit nonce recommended for AES-GCM
 MAX_HEADER_SIZE = 64 * 1024
 
 
-# ---------------------------------------------------------------------------
-# 1. Hashing Utilities
-# ---------------------------------------------------------------------------
+# Hashing utilities
 
 def compute_sha256(data):
-    """Return the SHA-256 hex digest string of the given bytes."""
+    """Return the SHA-256 hex digest of the given bytes."""
     digest = hashlib.sha256(data).hexdigest()
     return digest
 
 
 def generate_aes_key():
-    """Generate a random 256-bit (32-byte) AES key."""
+    """Generate a random 32-byte AES key."""
     return os.urandom(32)
 
 
-# ---------------------------------------------------------------------------
-# 2. Symmetric Encryption (AES-256-GCM)
-# ---------------------------------------------------------------------------
+# Symmetric encryption (AES-256-GCM)
 
 def encrypt_aes_gcm(plaintext_bytes, aes_key, aad=None):
-    """
-    Encrypt bytes using AES-256-GCM with a random 12-byte nonce.
-    Returns: nonce (12 bytes) + ciphertext + GCM auth tag (16 bytes).
-    """
+    """Encrypt bytes using AES-256-GCM and return (nonce, ciphertext_and_tag)."""
     if len(aes_key) != 32:
         raise ValueError("AES-256 requires a 32-byte key.")
 
@@ -63,23 +42,18 @@ def encrypt_aes_gcm(plaintext_bytes, aes_key, aad=None):
     aesgcm = AESGCM(aes_key)
     ciphertext_and_tag = aesgcm.encrypt(nonce, plaintext_bytes, aad)
 
-    # Prepend nonce so decrypt_aes_gcm can read it later
     return nonce, ciphertext_and_tag
 
 
 def decrypt_aes_gcm(nonce, ciphertext_and_tag, aes_key, aad=None):
-    """
-    Decrypt nonce + ciphertext + GCM tag using AES-256-GCM.
-    Raises InvalidTag (wrapped as ValueError) on authentication failure.
-    Returns: original plaintext bytes.
-    """
+    """Decrypt and verify AES-256-GCM ciphertext, raising ValueError on failure."""
     if len(aes_key) != 32:
         raise ValueError("AES-256 requires a 32-byte key.")
 
     if len(nonce) != GCM_NONCE_SIZE:
         raise ValueError("GCM nonce must be 12 bytes.")
 
-    # ciphertext must be at least 16 bytes (the GCM tag alone)
+    # Ciphertext must be at least 16 bytes for the GCM tag
     if len(ciphertext_and_tag) < 16:
         raise ValueError("Encrypted data is too short or incomplete.")
 
@@ -95,12 +69,10 @@ def decrypt_aes_gcm(nonce, ciphertext_and_tag, aes_key, aad=None):
     return plaintext_bytes
 
 
-# ---------------------------------------------------------------------------
-# 3. Asymmetric Key Wrapping (RSA-2048 OAEP)
-# ---------------------------------------------------------------------------
+# Asymmetric key wrapping (RSA-2048 OAEP)
 
 def encrypt_rsa(public_key_pem, data_bytes):
-    """Encrypt small key data using a recipient's RSA public key (OAEP + SHA-256)."""
+    """Encrypt small key bytes with a recipient's RSA public key."""
     public_key = serialization.load_pem_public_key(public_key_pem.encode("utf-8"))
     if not hasattr(public_key, "key_size") or public_key.key_size < 2048:
         raise ValueError("Recipient key must be an RSA key of at least 2048 bits.")
@@ -116,10 +88,7 @@ def encrypt_rsa(public_key_pem, data_bytes):
 
 
 def decrypt_rsa(private_key_pem, encrypted_bytes):
-    """
-    Decrypt key data using the user's RSA private key (OAEP + SHA-256).
-    Accepts either a PEM string or a loaded private key object.
-    """
+    """Decrypt key bytes using the user's RSA private key."""
     try:
         # Accept either a PEM string or an already-loaded private key object
         if isinstance(private_key_pem, str):
@@ -151,15 +120,10 @@ def decrypt_rsa(private_key_pem, encrypted_bytes):
         raise ValueError("RSA key decryption failed: Incorrect private key.")
 
 
-# ---------------------------------------------------------------------------
-# 4. Bundle Metadata Helpers
-# ---------------------------------------------------------------------------
+# Bundle metadata helpers
 
 def _sanitize_filename(filename):
-    """
-    Sanitize a filename from bundle metadata to prevent path traversal.
-    Returns only the basename, stripping any directory components.
-    """
+    """Strip directory paths from a bundle filename to prevent path traversal."""
     # os.path.basename handles both Unix and Windows separators
     sanitized = os.path.basename(filename.replace("\\", "/"))
     # Reject empty filenames after sanitization
@@ -169,11 +133,7 @@ def _sanitize_filename(filename):
 
 
 def _read_bundle_metadata(data):
-    """
-    Parse the magic, header length, and JSON metadata from raw bundle bytes.
-    Returns: (metadata_dict, metadata_end_offset)
-    Raises ValueError on any format or integrity issue.
-    """
+    """Parse and validate the magic signature, header length, and JSON metadata."""
     magic_len = len(FILE_MAGIC)
 
     if len(data) < magic_len + 4 or not data.startswith(FILE_MAGIC):
@@ -216,11 +176,7 @@ def _read_bundle_metadata(data):
 
 
 def get_bundle_suggested_filename(input_path):
-    """
-    Read just the metadata from an encrypted bundle and return the embedded
-    filename (sanitized). This helps the GUI suggest a save filename for
-    decryption without fully parsing the bundle.
-    """
+    """Return the sanitized original filename from an encrypted bundle's metadata."""
     if not os.path.exists(input_path):
         raise FileNotFoundError("Encrypted file not found: " + str(input_path))
 
@@ -231,9 +187,7 @@ def get_bundle_suggested_filename(input_path):
     return _sanitize_filename(metadata.get("filename", "decrypted_file"))
 
 
-# ---------------------------------------------------------------------------
-# 5. Complete File Encryption & Decryption
-# ---------------------------------------------------------------------------
+# File encryption and decryption
 
 def encrypt_file(
     input_path,
@@ -241,14 +195,7 @@ def encrypt_file(
     recipient_public_key_pem,
     overwrite=False
 ):
-    """
-    Encrypt a file for offline sharing:
-    1. Read plaintext file and calculate its SHA-256 hash.
-    2. Generate a random 32-byte AES key.
-    3. Encrypt the file with AES-256-GCM (authenticated encryption).
-    4. Encrypt the AES key with the recipient's RSA public key (OAEP + SHA-256).
-    5. Write the self-contained encrypted bundle to output_path.
-    """
+    """Encrypt a file into a self-contained .secureshare bundle for a recipient."""
     if not os.path.exists(input_path):
         raise FileNotFoundError("Input file not found: " + str(input_path))
 
@@ -311,17 +258,7 @@ def encrypt_file(
 
 
 def decrypt_file(input_path, output_path, recipient_private_key_pem, overwrite=False):
-    """
-    Decrypt an encrypted file bundle:
-    1. Parse file format signature and metadata header.
-    2. Decrypt the AES key using recipient's RSA private key.
-    3. Decrypt ciphertext using AES-256-GCM (authentication is implicit).
-    4. Recalculate SHA-256 hash and verify it matches original metadata hash.
-    5. Save restored file to output_path.
-
-    On GCM auth failure or SHA-256 mismatch the output file is NOT written
-    and a ValueError is raised with a clear message.
-    """
+    """Decrypt and verify a .secureshare bundle, then save the restored file."""
     if not os.path.exists(input_path):
         raise FileNotFoundError("Encrypted file not found: " + str(input_path))
 

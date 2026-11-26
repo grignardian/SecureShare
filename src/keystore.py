@@ -1,15 +1,4 @@
-"""
-keystore.py - Local Key Management for SecureShare
---------------------------------------------------
-Handles RSA-2048 key pair generation, saving, loading, and a local contact
-book for an offline file encryption/decryption desktop application.
-
-Security rules:
-- Private keys are stored ONLY on the user's local machine inside the keys/ folder.
-- Private keys are encrypted on disk using password-based encryption (PKCS#8).
-- Private key files use owner-only permissions (0600) where supported by the OS.
-- Private keys must NEVER leave the local machine.
-"""
+# Local RSA key management and contact book for SecureShare
 
 import hashlib
 import json
@@ -51,10 +40,7 @@ def has_private_key(keys_dir=KEYS_DIR):
 
 
 def generate_rsa_keypair():
-    """
-    Generate a fresh 2048-bit RSA key pair.
-    Returns: (private_key_object, public_key_pem_string)
-    """
+    """Generate a 2048-bit RSA key pair and return (private_key, public_pem)."""
     private_key = rsa.generate_private_key(
         public_exponent=65537,
         key_size=2048
@@ -69,10 +55,7 @@ def generate_rsa_keypair():
 
 
 def save_private_key(private_key, passphrase, keys_dir=KEYS_DIR, overwrite=False):
-    """
-    Encrypt the private key using the user's passphrase and save it to disk.
-    Applies owner-only file permissions (chmod 600) where supported.
-    """
+    """Encrypt and save the private key to disk with owner-only permissions."""
     if not passphrase:
         raise ValueError("Passphrase is required to protect the private key.")
 
@@ -118,10 +101,7 @@ def save_public_key(public_pem, keys_dir=KEYS_DIR, overwrite=False):
 
 
 def load_private_key(passphrase, keys_dir=KEYS_DIR):
-    """
-    Load the passphrase-protected private key from disk and unlock it in memory.
-    Returns: the decrypted private key object (kept strictly in memory).
-    """
+    """Load and unlock the passphrase-protected private key in memory."""
     if not passphrase:
         raise ValueError("Passphrase is required to unlock your private key.")
 
@@ -164,10 +144,7 @@ def export_public_key(dest_path, keys_dir=KEYS_DIR):
 
 
 def compute_fingerprint(public_pem):
-    """
-    Compute a SHA-256 fingerprint of a public key.
-    Returns a colon-separated hex string like "AB:CD:EF:12:...".
-    """
+    """Return the colon-separated SHA-256 fingerprint of a public key."""
     if isinstance(public_pem, str):
         public_pem = public_pem.encode("utf-8")
 
@@ -184,9 +161,7 @@ def compute_fingerprint(public_pem):
     return ":".join(digest[i:i + 2] for i in range(0, len(digest), 2))
 
 
-# ---------------------------------------------------------------------------
-# Contact book – a local JSON file for imported public keys
-# ---------------------------------------------------------------------------
+# Contact book stored as a local JSON file
 
 def _contacts_path(keys_dir=KEYS_DIR):
     """Return the full path to the contacts JSON file."""
@@ -194,12 +169,7 @@ def _contacts_path(keys_dir=KEYS_DIR):
 
 
 def load_contacts(keys_dir=KEYS_DIR):
-    """
-    Load the contact book from disk.
-    Returns a list of dicts, each with keys:
-        {"name": str, "public_key": str, "fingerprint": str, "added": iso_timestamp}
-    Returns an empty list if the file does not exist.
-    """
+    """Load the saved contact list from disk, or return an empty list."""
     path = _contacts_path(keys_dir)
     if not os.path.exists(path):
         return []
@@ -218,12 +188,7 @@ def save_contacts(contacts, keys_dir=KEYS_DIR):
 
 
 def add_contact(name, public_pem, keys_dir=KEYS_DIR):
-    """
-    Add a new contact to the local contact book.
-    Validates that the PEM is a valid RSA public key, computes its fingerprint,
-    and checks for duplicates by fingerprint and by name.
-    Returns the newly created contact dict.
-    """
+    """Validate and add a new RSA public key contact to the local contact book."""
     if isinstance(public_pem, bytes):
         public_pem = public_pem.decode("utf-8")
 
@@ -278,10 +243,7 @@ def remove_contact(name, keys_dir=KEYS_DIR):
 
 
 def get_contact(name, keys_dir=KEYS_DIR):
-    """
-    Look up a contact by name.
-    Returns the contact dict, or None if not found.
-    """
+    """Return a contact dict by name, or None if not found."""
     contacts = load_contacts(keys_dir)
     for contact in contacts:
         if contact["name"] == name:
@@ -290,11 +252,7 @@ def get_contact(name, keys_dir=KEYS_DIR):
 
 
 def import_contact_from_file(name, key_file_path, keys_dir=KEYS_DIR):
-    """
-    Import a contact's public key from a PEM file on disk.
-    Reads the file, then delegates to add_contact for validation and storage.
-    Returns the newly created contact dict.
-    """
+    """Read a PEM public key file from disk and add it as a contact."""
     if not os.path.isfile(key_file_path):
         raise FileNotFoundError("Key file not found: " + key_file_path)
 
